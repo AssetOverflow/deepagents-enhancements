@@ -1,5 +1,8 @@
 # AssetOverflow/deephaven-mcp Integration Blueprint for Deepagents
 
+> **Audience:** Deepagents platform engineers and operations owners responsible for
+> shipping, hardening, and extending MCP tooling inside the Deepagents runtime.
+
 ## Purpose and Scope
 This document analyzes the open-source `AssetOverflow/deephaven-mcp` Model Context Protocol (MCP) server
 and designs a practical integration plan that elevates it to a first-class subsystem inside Deepagents.
@@ -8,6 +11,19 @@ publicly documented MCP conventions with the deephaven research already captured
 produce an actionable, architecture-level plan. The focus is on maximizing efficiency, reliability, and
 extensibility so that Deephaven capabilities become fundamental to Deepagents and can host future MCP
 extensions with minimal incremental effort.
+
+## Table of Contents
+- [Repository Overview](#repository-overview)
+- [Integration Goals](#integration-goals)
+- [Deepagents Architectural Touchpoints](#deepagents-architectural-touchpoints)
+- [High-Level Architecture](#high-level-architecture)
+- [Integration Plan](#integration-plan)
+- [Implementation Blueprint inside Deepagents](#implementation-blueprint-inside-deepagents)
+- [Configuration and Deployment Cookbook](#configuration-and-deployment-cookbook)
+- [Quality Gates and Testing Strategy](#quality-gates-and-testing-strategy)
+- [Runbook Artifacts to Produce](#runbook-artifacts-to-produce)
+- [Pathway for Additional MCP Tools](#pathway-for-additional-mcp-tools)
+- [Expected Outcomes](#expected-outcomes)
 
 ## Repository Overview
 `deephaven-mcp` exposes Deephaven analytics through MCP tools, enabling LLM agents to run server-side
@@ -126,6 +142,123 @@ The integration plan exploits these hooks to deliver deterministic, high-through
    MCP integration, storing them in the filesystem middleware for auditing.
 4. **Testing harness**: Build contract tests that mock the MCP server to validate tool interfaces without
    requiring live Deephaven instances.
+
+## Implementation Blueprint inside Deepagents
+
+The following map translates the phased plan into concrete code additions scoped to this repository.
+
+| Workstream | Deepagents Touchpoints | Deliverables |
+|------------|------------------------|--------------|
+| **Package Integration** | `pyproject.toml`, `uv.lock`, Docker build contexts | Add `deephaven-mcp` + `pydeephaven` dependencies, pin versions, and provide editable extras for local dev containers. |
+| **Tool Harness** | `src/deepagents/integrations/deephaven_mcp/` | Create a package exporting `DeephavenMCPClient`, LangChain-compatible `Tool` factories (`run_query_tool`, `subscribe_tool`, `materialize_tool`), and Pydantic response models. |
+| **Middleware & Session Pool** | `src/deepagents/middleware/session_pool.py` (new), integrate in `graph.py` registration flow | Async context manager backed by `asyncio.Semaphore` for connection pooling, instrumentation hooks, configurable via `DeephavenMCPSettings`. |
+| **Configuration Layer** | `src/deepagents/settings.py`, `.env.example`, docs | Extend settings object with `deephaven_mcp_url`, `deephaven_mcp_token`, optional TLS flags, and environment variable mapping. |
+| **Filesystem Layout** | `src/deepagents/middleware/filesystem.py`, `README.md` | Introduce `deephaven/` namespace with standardized subdirectories (`materializations/`, `subscriptions/`, `logs/`). |
+| **Observability** | `src/deepagents/instrumentation/mcp_logging.py` (new), integrate with existing patch middleware | Structured logging for each MCP call, correlation IDs, latency metrics, and failure classification for policy review. |
+| **Orchestrator Subagents** | `examples/deephaven/stream_monitor.yaml`, `docs/runbooks/` | Provide sample LangGraph definitions demonstrating specialized Deephaven subagents and TODO triggers. |
+
+### Module Skeletons
+
+```python
+# src/deepagents/integrations/deephaven_mcp/client.py
+class DeephavenMCPClient:
+    def __init__(self, settings: DeephavenMCPSettings, *, session_pool: MCPAsyncSessionPool):
+        ...
+
+    async def run_query(self, script: str, *, table: str | None = None, max_rows: int = 200) -> DeephavenQueryResult:
+        ...
+
+    async def materialize(self, table_ticket: str, *, destination: Path) -> DeephavenMaterializationResult:
+        ...
+
+    async def subscribe(self, table_ticket: str, *, sink: SubscriptionSink) -> SubscriptionHandle:
+        ...
+```
+
+```python
+# src/deepagents/integrations/deephaven_mcp/tools.py
+deephaven_run_query = Tool.from_function(
+    DeephavenMCPClient.run_query,
+    name="deephaven_run_query",
+    description="Execute a Deephaven script via MCP and return schema-aware summaries.",
+)
+```
+
+### Integration Hooks
+1. Register the Deephaven tool suite within `build_default_graph()` in `src/deepagents/graph.py` behind a
+   feature flag (`settings.deephaven_mcp_enabled`).
+2. Use dependency injection so subagents request the `DeephavenMCPClient` via the LangGraph state instead of
+   rebuilding clients per call.
+3. Surface summarized responses to the planner via the existing TODO middleware enrichment pattern so agents
+   automatically annotate next steps.
+
+## Configuration and Deployment Cookbook
+
+```toml
+# pyproject.toml excerpt
+[project.optional-dependencies]
+deephaven = [
+    "deephaven-mcp>=0.1.0",
+    "deephaven-core>=0.34.0",
+    "pydeephaven>=0.32.0",
+]
+```
+
+```env
+# .env.example additions
+DEEPHAVEN_MCP_URL=https://deephaven-mcp.internal:8080
+DEEPHAVEN_MCP_TOKEN=replace-with-secret
+DEEPHAVEN_MCP_USE_TLS=true
+DEEPHAVEN_MCP_SUBSCRIPTION_DIR=/workdir/deephaven/subscriptions
+```
+
+```yaml
+# k8s ConfigMap fragment
+data:
+  deephaven-mcp-settings.yaml: |
+    url: ${DEEPHAVEN_MCP_URL}
+    auth_token: ${DEEPHAVEN_MCP_TOKEN}
+    request_timeout_seconds: 45
+    session_pool:
+      max_concurrent_sessions: 6
+      idle_ttl_seconds: 900
+    subscription_defaults:
+      max_queue_size: 2048
+      lag_alert_seconds: 30
+```
+
+Deployment Steps:
+1. Build the Deepagents runtime image with the `deephaven` extra enabled; run smoke tests using
+   `uv run python -m examples.deephaven.healthcheck`.
+2. Store the MCP token in the platform's secrets manager and reference it in orchestrator manifests.
+3. Provision a shared volume (or S3 bucket) mounted at `/workdir/deephaven/` for materializations and
+   subscription logs; enforce lifecycle policies for large artifacts.
+4. Configure observability exporters (OpenTelemetry / Prometheus) to scrape MCP metrics emitted by the new
+   instrumentation module.
+
+## Quality Gates and Testing Strategy
+
+| Layer | Test Type | Description |
+|-------|-----------|-------------|
+| **Unit** | `pytest tests/integrations/deephaven/test_client.py` | Mock MCP transport to validate serialization, response parsing, and error normalization. |
+| **Contract** | `pytest tests/integrations/deephaven/test_contract.py --record` | Replay golden MCP transcripts stored under `tests/fixtures/deephaven/` to ensure backward-compatible payloads. |
+| **Integration** | `make test-deephaven` | Spin up a disposable Deephaven + MCP stack via docker-compose and run end-to-end tool exercises, verifying filesystem outputs. |
+| **Smoke** | `uv run python examples/deephaven/healthcheck.py` | Verifies credentials, basic query execution, and subscription handshake on deploy. |
+| **Load** | Locust / k6 scenario | Stress-check concurrent MCP queries and subscription fan-out using pooled sessions. |
+
+Define CI workflows that execute unit + contract tests on every PR, optional integration tests behind a
+feature flag, and smoke tests post-deploy.
+
+## Runbook Artifacts to Produce
+
+- **Health Check Guide** (`docs/runbooks/deephaven_mcp_healthcheck.md`): Troubleshooting steps for failed
+  connectivity probes, credential expiry, and TLS issues.
+- **Subscription Operations Manual** (`docs/runbooks/deephaven_subscription_ops.md`): Explains how to
+  interpret summarized deltas, rotate stream monitors, and adjust alert thresholds.
+- **Incident Response Cheat Sheet** (`docs/runbooks/deephaven_incidents.md`): Mapping of MCP error codes to
+  Deephaven remediation actions and contact paths.
+- **Extensibility Playbook** (`docs/runbooks/mcp_extension_playbook.md`): Template for onboarding new MCP
+  servers using the same harness, including checklist items for security, testing, and documentation.
 
 ## Practical Implementation Guidance
 - **Tool Definitions**: Provide thin wrappers that translate Deepagents' typed inputs into MCP requests. Use
