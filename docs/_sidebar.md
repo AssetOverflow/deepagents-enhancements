@@ -1,0 +1,14 @@
+- [Deepagents Documentation](README.md)
+- Research
+  - [Deephaven + Deepagents Overview](research/deephaven_deepagents.md)
+  - [Deephaven MCP Integration Blueprint](research/deephaven_mcp_integration.md)
+- Memory Architecture
+  - [Memory Documentation Hub](memory/README.md)
+  - [Short-Term Memory](memory/short_term_memory.md)
+  - [Long-Term Memory](memory/long_term_memory.md)
+  - [Memory Optimization Research](memory/optimization_research.md)
+- Redis Upgrades
+  - [Redis Overview](upgrades/Redis.md)
+  - [Agent Roster](upgrades/Redis_AgentRoster.md)
+  - [TODOs](upgrades/Redis_TODOs.md)
+  - [Tasks](upgrades/Redis_Tasks.md)

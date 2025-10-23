@@ -25,6 +25,14 @@ extensions with minimal incremental effort.
 - [Pathway for Additional MCP Tools](#pathway-for-additional-mcp-tools)
 - [Expected Outcomes](#expected-outcomes)
 
+## Executive Summary
+- **Elevate Deephaven MCP to a core Deepagents subsystem** by standardizing client packaging, configuration,
+  and health checking so agents can rely on it for primary analytics workflows.
+- **Ship a dedicated integration package** that wraps MCP tools into LangChain-ready helpers, pooling
+  sessions and normalizing responses for planners, subagents, and middleware.
+- **Operationalize Deephaven-first automation** through filesystem conventions, deployment cookbooks,
+  comprehensive testing matrices, and runbooks that de-risk future MCP server onboarding.
+
 ## Repository Overview
 `deephaven-mcp` exposes Deephaven analytics through MCP tools, enabling LLM agents to run server-side
 scripts, inspect schemas, and subscribe to live table updates. The standard layout of Anthropic-style MCP
