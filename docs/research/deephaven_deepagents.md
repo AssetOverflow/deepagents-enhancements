@@ -132,6 +132,17 @@ This logic workflow illustrates how tightly coupled data streaming, intelligent 
 - **Data Governance**: Autonomous agents manipulating production-grade data require audit logs and policy checks; integrate Deephaven's permissioning with Deepagents' human-in-the-loop middleware.
 - **Latency Sensitivity**: Real-time scenarios demand low jitter. Co-locate services, leverage gRPC keepalive tuning, and fall back to snapshot-based workflows when latency budgets are tight.
 
+## MCP Integration Roadmap
+The `AssetOverflow/deephaven-mcp` server encapsulates Deephaven capabilities behind the Model Context Protocol, making it an ideal bridge into Deepagents' LangGraph-based orchestration stack. The dedicated integration blueprint in `docs/research/deephaven_mcp_integration.md` details how to package the MCP server, wrap its tools, and elevate it to a core subsystem inside Deepagents.【F:docs/research/deephaven_mcp_integration.md†L1-L208】 Key takeaways include:
+
+- **Baseline Connectivity**: ship the MCP client alongside Deepagents, standardize credentials, and add health probes before agents begin work.【F:docs/research/deephaven_mcp_integration.md†L70-L99】
+- **Tooling Layer Enhancements**: adapt tool responses for Deepagents' planner, pool Deephaven sessions, and persist artifacts via filesystem middleware.【F:docs/research/deephaven_mcp_integration.md†L101-L125】
+- **Streaming Intelligence**: orchestrate long-lived subscriptions, trigger TODO updates from live events, and align Redis caches with Deephaven table tickets to minimize redundant work.【F:docs/research/deephaven_mcp_integration.md†L127-L148】
+- **Implementation Blueprint**: map Deepagents repository touchpoints (new integrations package, middleware, configuration surfaces) and provide module skeletons so engineers can begin work immediately.【F:docs/research/deephaven_mcp_integration.md†L151-L208】
+- **Configuration, Testing & Governance**: provide environment templates, deployment manifests, test matrices, and runbook deliverables that enforce policy guardrails while accelerating additional MCP server onboarding.【F:docs/research/deephaven_mcp_integration.md†L210-L248】【F:docs/research/deephaven_mcp_integration.md†L250-L295】
+
+These steps transform Deephaven from an external analytics engine into a deeply integrated execution substrate for Deepagents. The approach also establishes conventions—registry files, response schemas, and security baselines—that future MCP integrations can inherit.【F:docs/research/deephaven_mcp_integration.md†L191-L223】 With the MCP server embedded as a first-class capability, Deepagents gains a foundation for autonomous, streaming-aware intelligence that continuously improves through planning, caching, and subagent collaboration.
+
 ## Future Directions
 - **GPU-Accelerated Analytics**: Pair Deephaven's GPU plugins with Deepagents-driven model training loops for end-to-end accelerated MLOps.
 - **Hybrid Cloud Edge Deployments**: Use the C++ client for edge ingestion while Deepagents coordinates central analytics, enabling resilient, federated intelligence.
