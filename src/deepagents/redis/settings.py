@@ -1,4 +1,10 @@
-"""Configuration helpers for Redis-backed capabilities."""
+"""Configuration helpers for Redis-backed capabilities.
+
+The helper types defined here abstract how the rest of the codebase interacts
+with ``redis``.  They make it possible to configure Redis via connection URLs
+or pre-instantiated clients without forcing the runtime dependency when Redis
+is not needed.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +25,8 @@ class RedisSettings:
         client: Optional pre-configured Redis client. When provided, ``url`` is
             ignored.
         decode_responses: Whether to decode responses as ``str`` instead of
-            returning ``bytes``. Defaults to ``False`` to preserve binary payloads.
+            returning ``bytes``. Defaults to ``False`` to preserve binary
+            payloads.
         socket_timeout: Optional per-operation socket timeout in seconds.
         socket_connect_timeout: Optional timeout for establishing new
             connections.
@@ -41,7 +48,11 @@ class RedisSettings:
     extra_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def connection_kwargs(self) -> dict[str, Any]:
-        """Materialize connection kwargs for :func:`create_redis_client`."""
+        """Materialize connection kwargs for :func:`create_redis_client`.
+
+        Returns:
+            Keyword arguments compatible with :meth:`redis.Redis.from_url`.
+        """
 
         kwargs: dict[str, Any] = {
             "decode_responses": self.decode_responses,
@@ -58,7 +69,20 @@ class RedisSettings:
 
 
 def create_redis_client(settings: RedisSettings) -> Any:
-    """Create or reuse a Redis client based on provided settings."""
+    """Create or reuse a Redis client based on provided settings.
+
+    Args:
+        settings: Structured Redis configuration produced by :class:`RedisSettings`.
+
+    Returns:
+        A :mod:`redis` client ready for use by cache and store adapters.
+
+    Raises:
+        ModuleNotFoundError: If the ``redis`` dependency is unavailable and a
+            client instance is not provided.
+        ValueError: If no connection URL is supplied when a client is not
+            pre-instantiated.
+    """
 
     if settings.client is not None:
         return settings.client

@@ -64,6 +64,10 @@ def create_deep_agent(
     four file editing tools: write_file, ls, read_file, edit_file, and a tool to call
     subagents.
 
+    Redis integration is optional and configured via ``redis_settings``.  When
+    provided, callers can opt into Redis-backed caching and/or the Redis-backed
+    long-term store without manually instantiating the adapters.
+
     Args:
         tools: The tools the agent should have access to.
         system_prompt: The additional instructions the agent should have. Will go in
@@ -92,6 +96,8 @@ def create_deep_agent(
         name: The name of the agent. Passed through to create_agent.
         cache: The cache to use for the agent. Passed through to create_agent.
         redis_settings: Connection settings or URL for Redis-backed capabilities.
+            When a string is supplied it is interpreted as a Redis connection URL;
+            otherwise provide an instance of :class:`~deepagents.redis.RedisSettings`.
         enable_redis_cache: Whether to automatically configure a Redis cache when
             ``redis_settings`` are provided and ``cache`` is not supplied.
         enable_redis_store: Whether to create a Redis-backed store when
