@@ -10,6 +10,7 @@ dependencies = [
     "langchain>=1.0.0,<2.0.0",
     "langchain-core>=1.0.0,<2.0.0",
     "redis>=5.0.0,<6.0.0",
+    "pydeephaven>=0.32.0,<1.0.0",
 ]
 
 [project.optional-dependencies]
