@@ -1181,6 +1181,11 @@ wheels = [
 ]
 
 [[package]]
+name = "pydeephaven"
+version = "0.32.0"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
 name = "pygments"
 version = "2.19.2"
 source = { registry = "https://pypi.org/simple" }
