@@ -46,7 +46,7 @@ __all__ = [
     "create_deep_agent",
 ]
 
-if ColumnSpec is not None:
+if ColumnSpec or DeephavenTelemetryEmitter is not None:  # pragma: no cover - optional export
     __all__.extend(
         [
             "ColumnSpec",
