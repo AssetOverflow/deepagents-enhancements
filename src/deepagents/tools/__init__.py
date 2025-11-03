@@ -37,8 +37,7 @@ class CallableToolProvider(ToolProvider):
         self._factory = factory
 
     def get_tools(self) -> Sequence[ToolLike]:
-        tools = list(self._factory())
-        return tools
+        return list(self._factory())
 
 
 def _tool_name(tool: ToolLike) -> str | None:
