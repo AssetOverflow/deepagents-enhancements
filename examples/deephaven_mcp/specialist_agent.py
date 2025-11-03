@@ -47,8 +47,14 @@ async def run_specialist(session_messages: list[dict[str, Any]] | None = None) -
         )
 
         async for chunk in agent.astream({"messages": session_messages}, stream_mode="values"):
-            if "messages" in chunk:
-                chunk["messages"][-1].pretty_print()
+            messages = chunk.get("messages")
+            if (
+                isinstance(messages, list)
+                and messages
+                and hasattr(messages[-1], "pretty_print")
+                and callable(messages[-1].pretty_print)
+            ):
+                messages[-1].pretty_print()
 
 
 if __name__ == "__main__":
