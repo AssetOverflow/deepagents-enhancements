@@ -15,3 +15,6 @@
   - [Agent Roster](upgrades/Redis_AgentRoster.md)
   - [TODOs](upgrades/Redis_TODOs.md)
   - [Tasks](upgrades/Redis_Tasks.md)
+  
+- Integrations
+  - [Deephaven Configuration](integrations/deephaven.md)
