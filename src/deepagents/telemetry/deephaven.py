@@ -12,7 +12,7 @@ from typing import Any, Callable, Protocol
 
 try:
     from pydeephaven import dtypes as dh_dtypes
-except ModuleNotFoundError:  # pragma: no cover - fallback for optional dependency
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - fallback for optional dependency
     dh_dtypes = None
 
 
