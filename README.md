@@ -483,7 +483,7 @@ Prior versions of deepagents separated sync and async agent factories.
 
 Deepagents now treats the Deephaven MCP server as a first-class transport for streaming telemetry, query execution, and materialization workflows. Read the [Deephaven MCP Operations Guide](docs/deephaven-mcp.md) for deployment, configuration, and troubleshooting details, and try the [specialist example](examples/deephaven_mcp/specialist_agent.py) to see the integration in action.
 
-The `deepagents` library can be ran with MCP tools by using the [Langchain MCP Adapter library](https://github.com/langchain-ai/langchain-mcp-adapters).
+The `deepagents` library can be run with MCP tools by using the [Langchain MCP Adapter library](https://github.com/langchain-ai/langchain-mcp-adapters).
 
 **NOTE:** Use `from deepagents import create_deep_agent` to construct async-capable agents; the factory automatically returns an async graph when any async tools (like MCP) are supplied.
 
