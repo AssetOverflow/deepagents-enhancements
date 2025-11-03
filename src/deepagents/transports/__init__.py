@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 from deepagents.transports.base import MessageTransport
 from deepagents.transports.deephaven import DeephavenTables, DeephavenTransport
+from deepagents.transports.mcp import MCPTransport
 from deepagents.transports.memory import InMemoryTransport
 
 TransportFactory = Callable[[Mapping[str, Any]], MessageTransport]
@@ -56,6 +57,7 @@ __all__ = [
     "DeephavenTables",
     "DeephavenTransport",
     "InMemoryTransport",
+    "MCPTransport",
     "get_transport",
     "register_transport",
 ]
