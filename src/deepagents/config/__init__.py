@@ -218,11 +218,10 @@ def load_deephaven_settings(
 
 
     stream_tables = _coerce_mapping(
-        mcp_section.get("stream_tables"),
-        section="stream_tables",
-    )
-    if not stream_tables:
-        stream_tables = _parse_mapping_string(env.get(f"{env_mcp_prefix}STREAM_TABLES"), section="stream_tables")
+            mcp_section.get("stream_tables"),
+            section="stream_tables",
+        ) or _parse_mapping_string(env.get(f"{env_mcp_prefix}STREAM_TABLES"), section="stream_tables")
+
 
     env_enabled_raw = env.get(f"{env_mcp_prefix}ENABLED")
     env_enabled = _coerce_bool(env_enabled_raw, default=False) if env_enabled_raw is not None else False
