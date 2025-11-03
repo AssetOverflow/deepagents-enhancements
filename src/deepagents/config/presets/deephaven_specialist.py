@@ -73,9 +73,9 @@ DEEPHAVEN_ANALYST_SUBAGENT_PROMPT = dedent(
 """System prompt used by the Deephaven specialist subagent."""
 
 _MUTATION_PATTERN = re.compile(
-    r"(?i)(?:delete|drop|merge|overwrite|publish|update|write|insert)\w*",
+    r"(?i)\b(?:delete|drop|merge|overwrite|publish|update|write|insert)\b",
 )
-"""Regex used to detect potentially mutating Deephaven operations."""
+"""Regex used to detect potentially mutating Deephaven operations, matching only whole words to minimize false positives."""
 
 
 def _format_goals(goals: Iterable[str]) -> str:
