@@ -97,6 +97,18 @@ in the same way you would any LangGraph agent.
 
  Extend agents with persistent memory across threads using LangGraph’s Store. Agents can save and retrieve information from previous conversations.
 
+## Deephaven Transport (Preview)
+
+Deepagents now ships guidance for using Deephaven as a high-throughput transport powering TODO
+planning, task distribution, and telemetry streaming. The integration blueprint covers dependency
+installation, configuration surfaces, and operational runbooks.
+
+- Read the [Deephaven transport integration guide](docs/integrations/deephaven.md) for setup.
+- Explore the [producer](examples/deephaven/producer.py) and
+  [consumer](examples/deephaven/consumer.py) examples for reference patterns.
+- Align implementation details with the
+  [Deephaven neural bus research plan](docs/research/deephaven_neural_bus_plan.md).
+
 ## Customizing Deep Agents
 
 There are several parameters you can pass to `create_deep_agent` to create your own custom deep agent.
