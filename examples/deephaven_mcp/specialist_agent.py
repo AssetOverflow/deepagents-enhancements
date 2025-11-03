@@ -25,7 +25,30 @@ def _build_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def run_specialist(session_messages: list[dict[str, Any]] | None = None) -> None:
+Instead of inlining all the `MultiServerMCPClient` boilerplate in `run_specialist`, factor out a single‐server helper/CM. This removes the nesting, the `add_server` call and the `include_servers` filter:
+
+1. Create a small wrapper subclass:
+
+   ```python
+   # specialist_agent/client.py
+   import os
+   from typing import Any
+   from langchain_mcp_adapters.client import MultiServerMCPClient
+
+   def _build_headers() -> dict[str, str]:
+       token = os.environ.get("DEEPHAVEN_MCP_TOKEN")
+       return {"Authorization": f"Bearer {token}"} if token else {}
+
+   class DeephavenClient(MultiServerMCPClient):
+       async def __aenter__(self) -> "DeephavenClient":
+           await super().__aenter__()
+           await self.add_server(
+               name="deephaven",
+               uri=os.environ["DEEPHAVEN_MCP_URL"],
+               transport=os.environ.get("DEEPHAVEN_MCP_TRANSPORT", "ws"),
+               headers=_build_headers(),
+           )
+           return self
     """Connect to Deephaven MCP and stream responses for the provided messages."""
 
     session_messages = session_messages or [
