@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, ExitStack
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from threading import Lock
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Mapping as MappingType, Protocol
 
 try:
     from pydeephaven import dtypes as dh_dtypes
-except ModuleNotFoundError:  # pragma: no cover - fallback for optional dependency
+except Exception:  # pragma: no cover - fallback for optional dependency
     dh_dtypes = None
 
 
@@ -212,3 +213,182 @@ class DeephavenTelemetryEmitter:
         with self._writer_factory(table_name, column_names, column_types) as writer:
             for row in rows:
                 writer.write_row(*(row.get(column) for column in column_names))
+
+    def persist_events(
+        self,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        table_name: str | None = None,
+    ) -> None:
+        """Immediately persist rows to the events table.
+
+        Args:
+            rows: Iterable of mappings matching the configured event schema.
+            table_name: Optional override for the destination table. Defaults to
+                the primary agent events table configured for the emitter.
+        """
+
+        if not rows:
+            return
+        target_table = table_name or self._agent_events_table
+        with self._lock:
+            self._write_rows(target_table, self._event_schema, rows)
+
+
+class MCPStreamClient(Protocol):
+    """Protocol describing the minimum MCP stream subscription interface."""
+
+    def subscribe_stream(
+        self,
+        stream: str,
+        *,
+        params: MappingType[str, Any] | None,
+        on_event: Callable[[MappingType[str, Any]], None],
+    ) -> AbstractContextManager[Any]:  # pragma: no cover - runtime contract
+        """Subscribe to an MCP stream, invoking ``on_event`` for updates."""
+
+
+BusPublisher = Callable[[Mapping[str, Any]], None]
+
+
+@dataclass(slots=True)
+class MCPStreamBridgeConfig:
+    """Runtime configuration for bridging MCP stream telemetry."""
+
+    agent_id: str
+    session_id: str | None = None
+    run_id: str | None = None
+    buffer_size: int = 10
+    stream_topics: Mapping[str, str] | None = None
+    stream_tables: Mapping[str, str] | None = None
+    stream_events: Mapping[str, str] | None = None
+
+    def resolve_topic(self, stream: str) -> str:
+        mapping = self.stream_topics or {}
+        return mapping.get(stream, stream)
+
+    def resolve_table(self, stream: str) -> str | None:
+        mapping = self.stream_tables or {}
+        return mapping.get(stream)
+
+    def resolve_event(self, stream: str) -> str:
+        mapping = self.stream_events or {}
+        return mapping.get(stream, f"mcp.stream.{stream}")
+
+
+class MCPStreamSubscriber:
+    """Fan out MCP stream updates to Deephaven tables and the message bus."""
+
+    def __init__(
+        self,
+        client: MCPStreamClient,
+        emitter: DeephavenTelemetryEmitter,
+        *,
+        bridge_config: MCPStreamBridgeConfig,
+        bus_publisher: BusPublisher | None = None,
+    ) -> None:
+        if bridge_config.buffer_size <= 0:
+            msg = "buffer_size must be positive"
+            raise ValueError(msg)
+
+        self._client = client
+        self._emitter = emitter
+        self._config = bridge_config
+        self._bus_publisher = bus_publisher
+        self._buffers: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+        self._subscriptions: dict[str, AbstractContextManager[Any]] = {}
+        self._stack = ExitStack()
+
+    def subscribe(self, stream: str, *, params: Mapping[str, Any] | None = None) -> None:
+        """Subscribe to a single MCP stream and start buffering events."""
+
+        if stream in self._subscriptions:
+            return
+
+        def _handler(payload: Mapping[str, Any]) -> None:
+            self._handle_event(stream, payload)
+
+        subscription = self._client.subscribe_stream(stream, params=params, on_event=_handler)
+        entered = self._stack.enter_context(subscription)
+        # Some MCP clients may return auxiliary objects when entering the context.
+        self._subscriptions[stream] = subscription
+        if entered is not None:
+            # Entered value is ignored; ``on_event`` drives the workflow.
+            _ = entered
+
+    def _handle_event(self, stream: str, payload: Mapping[str, Any]) -> None:
+        buffer = self._buffers[stream]
+        buffer.append(dict(payload))
+        if len(buffer) >= self._config.buffer_size:
+            self._flush_stream(stream)
+
+    def _flush_stream(self, stream: str) -> None:
+        buffer = self._buffers.get(stream)
+        if not buffer:
+            return
+        rows = [
+            {
+                "timestamp": datetime.now(timezone.utc),
+                "agent_id": self._config.agent_id,
+                "event_type": self._config.resolve_event(stream),
+                "run_id": self._config.run_id,
+                "payload_json": json.dumps(
+                    {
+                        "stream": stream,
+                        "topic": self._config.resolve_topic(stream),
+                        "updates": buffer,
+                    },
+                    sort_keys=True,
+                    default=str,
+                ),
+            }
+        ]
+
+        table_override = self._config.resolve_table(stream)
+        self._emitter.persist_events(rows, table_name=table_override)
+
+        if self._bus_publisher is not None:
+            event_payload = json.dumps(
+                {
+                    "stream": stream,
+                    "topic": self._config.resolve_topic(stream),
+                    "updates": buffer,
+                },
+                sort_keys=True,
+                default=str,
+            )
+            bus_event = {
+                "ts": self._now_ns(),
+                "agent_id": self._config.agent_id,
+                "session_id": self._config.session_id or "",
+                "event": self._config.resolve_event(stream),
+                "details_json": event_payload,
+            }
+            self._bus_publisher(bus_event)
+
+        self._buffers[stream] = []
+
+    def flush(self) -> None:
+        """Flush all buffered stream updates."""
+
+        for stream in list(self._buffers):
+            self._flush_stream(stream)
+
+    def close(self) -> None:
+        """Flush buffered telemetry and release all subscriptions."""
+
+        try:
+            self.flush()
+        finally:
+            self._stack.close()
+            self._subscriptions.clear()
+
+    def __enter__(self) -> "MCPStreamSubscriber":  # pragma: no cover - convenience
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:  # pragma: no cover - convenience
+        self.close()
+
+    @staticmethod
+    def _now_ns() -> int:
+        return int(datetime.now(timezone.utc).timestamp() * 1_000_000_000)

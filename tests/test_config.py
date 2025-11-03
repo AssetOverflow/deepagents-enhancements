@@ -12,6 +12,7 @@ from deepagents.config import (
     DEFAULT_METRIC_TABLE,
     DEFAULT_UPDATE_GRAPH,
     DeephavenAuthSettings,
+    DeephavenMCPTelemetrySettings,
     DeephavenSettings,
     DeephavenTableSettings,
     load_deephaven_settings,
@@ -43,6 +44,7 @@ def test_load_deephaven_settings_from_nested_config() -> None:
             events="custom_events",
             metrics="custom_metrics",
         ),
+        mcp_telemetry=DeephavenMCPTelemetrySettings(),
     )
 
 
@@ -57,6 +59,32 @@ def test_load_deephaven_settings_environment_defaults(monkeypatch: pytest.Monkey
         messages=DEFAULT_MESSAGE_TABLE,
         events=DEFAULT_EVENT_TABLE,
         metrics=DEFAULT_METRIC_TABLE,
+    )
+    assert settings.mcp_telemetry == DeephavenMCPTelemetrySettings()
+
+
+def test_load_deephaven_settings_with_mcp_telemetry_section() -> None:
+    settings = load_deephaven_settings(
+        {
+            "deephaven": {
+                "uri": "grpc://deephaven:10000",
+                "mcp_telemetry": {
+                    "enabled": True,
+                    "inbound_buffer_size": 5,
+                    "outbound_buffer_size": 7,
+                    "stream_topics": {"alerts": "bus.alerts"},
+                    "stream_tables": {"alerts": "alerts_table"},
+                },
+            }
+        }
+    )
+
+    assert settings.mcp_telemetry == DeephavenMCPTelemetrySettings(
+        enabled=True,
+        inbound_buffer_size=5,
+        outbound_buffer_size=7,
+        stream_topics={"alerts": "bus.alerts"},
+        stream_tables={"alerts": "alerts_table"},
     )
 
 
