@@ -16,3 +16,4 @@
   
 - Integrations
   - [Deephaven Configuration](integrations/deephaven.md)
+  - [Deephaven MCP Operations Guide](deephaven-mcp.md)
