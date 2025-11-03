@@ -8,7 +8,8 @@ from typing import Any, Mapping
 from deepagents.transports.base import MessageTransport
 from deepagents.config import load_deephaven_mcp_settings
 from deepagents.transports.deephaven import DeephavenTables, DeephavenTransport
-from deepagents.transports.deephaven_mcp import DeephavenMCPTransport
+from deepagents.transports.mcp import DeephavenMCPTools, DeephavenMCPTransport
+from deepagents.transports.mcp import MCPTransport
 from deepagents.transports.memory import InMemoryTransport
 
 TransportFactory = Callable[[Mapping[str, Any]], MessageTransport]
@@ -52,18 +53,22 @@ def _create_deephaven_transport(config: Mapping[str, Any]) -> MessageTransport:
 
 
 def _create_deephaven_mcp_transport(config: Mapping[str, Any]) -> MessageTransport:
-    settings = load_deephaven_mcp_settings(config, require_url=True)
-    if settings is None:  # pragma: no cover - defensive, require_url enforces URL
-        msg = "Deephaven MCP settings could not be loaded"
+    client = config.get("client")
+    if client is None:
+        msg = "Deephaven MCP transport requires a 'client' entry in the config"
         raise ValueError(msg)
-    return DeephavenMCPTransport(settings=settings)
+    tools_cfg = config.get("tools")
+    tools = DeephavenMCPTools(**tools_cfg) if isinstance(tools_cfg, Mapping) else None
+    heartbeat = float(config.get("heartbeat_interval", 30.0))
+    return DeephavenMCPTransport(client=client, tools=tools, heartbeat_interval=heartbeat)
 
 
 register_transport("memory", _create_memory_transport)
 register_transport("deephaven", _create_deephaven_transport)
-register_transport("deephaven_mcp", _create_deephaven_mcp_transport)
+register_transport("deephaven-mcp", _create_deephaven_mcp_transport)
 
 __all__ = [
+    "DeephavenMCPTools",
     "DeephavenMCPTransport",
     "DeephavenTables",
     "DeephavenTransport",
