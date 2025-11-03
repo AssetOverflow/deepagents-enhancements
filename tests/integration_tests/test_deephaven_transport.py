@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping
 import pytest
 
 from deepagents import AgentSessionConfig, create_agent_session, create_deep_agent
+from deepagents.transports.deephaven_mcp import DeephavenMCPTransport
 
 
 class _MockSubscription:
@@ -110,3 +111,20 @@ def test_deephaven_events_and_metrics_persist(deephaven_session: _MockDeephavenS
 
     assert deephaven_session.tables["agent_events"][0]["event"] == "claimed"
     assert deephaven_session.tables["agent_metrics"][0]["messages_processed"] == 1
+
+
+def test_deephaven_mcp_transport_registration() -> None:
+    agent = create_deep_agent()
+    session = create_agent_session(
+        agent,
+        AgentSessionConfig(
+            transport={
+                "backend": "deephaven_mcp",
+                "deephaven_mcp": {"url": "https://mcp.example.com", "token": "secret"},
+            }
+        ),
+    )
+
+    assert isinstance(session.transport, DeephavenMCPTransport)
+    assert session.transport.settings.url == "https://mcp.example.com"
+    assert session.transport.settings.token == "secret"

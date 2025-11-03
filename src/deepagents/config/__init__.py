@@ -13,6 +13,7 @@ DEFAULT_METRIC_TABLE = "agent_metrics"
 DEFAULT_UPDATE_GRAPH = "graph_default"
 
 _ENV_PREFIX = "DEEPAGENTS_DEEPHAVEN_"
+_MCP_ENV_PREFIX = "DEEPAGENTS_DEEPHAVEN_MCP_"
 
 
 def _coerce_mapping(value: Mapping[str, Any] | None, *, section: str) -> MutableMapping[str, Any]:
@@ -24,32 +25,23 @@ def _coerce_mapping(value: Mapping[str, Any] | None, *, section: str) -> Mutable
     return dict(value)
 
 
-def _coerce_bool(value: Any, *, default: bool = False) -> bool:
+def _coerce_bool(value: Any, *, default: bool) -> bool:
+    """Coerce ``value`` into a boolean while supporting string representations."""
+
     if value is None:
         return default
     if isinstance(value, bool):
         return value
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in {"1", "true", "yes", "on"}:
-            return True
-        if lowered in {"0", "false", "no", "off"}:
-            return False
     if isinstance(value, (int, float)):
         return bool(value)
-    msg = f"Unable to coerce value '{value}' to a boolean"
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    msg = "Boolean configuration values must be boolean-like (true/false, 1/0, yes/no)"
     raise ValueError(msg)
-
-
-def _parse_mapping_string(raw: str | None, *, section: str) -> MutableMapping[str, Any]:
-    if not raw:
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:  # pragma: no cover - defensive
-        msg = f"Environment variable for '{section}' must be JSON encoded mapping"
-        raise ValueError(msg) from exc
-    return _coerce_mapping(parsed, section=section)
 
 
 @dataclass(slots=True)
@@ -249,6 +241,68 @@ def load_deephaven_settings(
     )
 
 
+@dataclass(slots=True)
+class DeephavenMCPSettings:
+    """Configuration required to communicate with the Deephaven MCP server."""
+
+    url: str
+    token: str
+    use_tls: bool = True
+    subscription_dir: str | None = None
+
+    def __post_init__(self) -> None:  # pragma: no cover - dataclass safety
+        if not self.url or not self.url.strip():
+            raise ValueError("DeephavenMCPSettings.url must be provided")
+        if not self.token or not self.token.strip():
+            raise ValueError("DeephavenMCPSettings.token must be provided")
+
+
+def load_deephaven_mcp_settings(
+    config: Mapping[str, Any] | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+    require_url: bool = False,
+) -> DeephavenMCPSettings | None:
+    """Load Deephaven MCP settings from mappings and environment variables."""
+
+    env = dict(env or os.environ)
+    root_config = _coerce_mapping(config, section="deephaven_mcp")
+    if "deephaven_mcp" in root_config:
+        mcp_section = _coerce_mapping(root_config["deephaven_mcp"], section="deephaven_mcp")
+    else:
+        mcp_section = dict(root_config)
+        mcp_section.pop("backend", None)
+
+    url = str(mcp_section.get("url") or env.get(f"{_MCP_ENV_PREFIX}URL") or "")
+    if not url:
+        if require_url:
+            raise ValueError("Deephaven MCP URL must be provided via configuration or environment")
+        return None
+
+    token_value = mcp_section.get("token") or env.get(f"{_MCP_ENV_PREFIX}TOKEN")
+    if not token_value or not str(token_value).strip():
+        raise ValueError("Deephaven MCP token must be provided via configuration or environment")
+    token = str(token_value)
+
+    if "use_tls" in mcp_section:
+        use_tls_raw = mcp_section.get("use_tls")
+    else:
+        use_tls_raw = env.get(f"{_MCP_ENV_PREFIX}USE_TLS")
+    use_tls = _coerce_bool(use_tls_raw, default=True)
+
+    subscription_dir_value = mcp_section.get("subscription_dir") or env.get(
+        f"{_MCP_ENV_PREFIX}SUBSCRIPTION_DIR"
+    )
+    subscription_dir = str(subscription_dir_value) if subscription_dir_value else None
+
+    return DeephavenMCPSettings(
+        url=url,
+        token=token,
+        use_tls=use_tls,
+        subscription_dir=subscription_dir,
+    )
+
+
 __all__ = [
     "DEFAULT_EVENT_TABLE",
     "DEFAULT_MESSAGE_TABLE",
@@ -258,5 +312,7 @@ __all__ = [
     "DeephavenMCPTelemetrySettings",
     "DeephavenSettings",
     "DeephavenTableSettings",
+    "DeephavenMCPSettings",
     "load_deephaven_settings",
+    "load_deephaven_mcp_settings",
 ]

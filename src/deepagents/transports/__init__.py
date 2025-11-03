@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any, Mapping
 
 from deepagents.transports.base import MessageTransport
+from deepagents.config import load_deephaven_mcp_settings
 from deepagents.transports.deephaven import DeephavenTables, DeephavenTransport
 from deepagents.transports.mcp import DeephavenMCPTools, DeephavenMCPTransport
 from deepagents.transports.mcp import MCPTransport

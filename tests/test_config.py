@@ -12,9 +12,10 @@ from deepagents.config import (
     DEFAULT_METRIC_TABLE,
     DEFAULT_UPDATE_GRAPH,
     DeephavenAuthSettings,
-    DeephavenMCPTelemetrySettings,
+    DeephavenMCPSettings,
     DeephavenSettings,
     DeephavenTableSettings,
+    load_deephaven_mcp_settings,
     load_deephaven_settings,
 )
 
@@ -92,6 +93,53 @@ def test_load_deephaven_settings_returns_none_without_uri() -> None:
     assert load_deephaven_settings({}) is None
     with pytest.raises(ValueError, match="must be provided"):
         load_deephaven_settings({}, require_uri=True)
+
+
+def test_load_deephaven_mcp_settings_from_config() -> None:
+    settings = load_deephaven_mcp_settings(
+        {
+            "deephaven_mcp": {
+                "url": "https://mcp.example.com",
+                "token": "secret-token",
+                "use_tls": False,
+                "subscription_dir": "/tmp/subscriptions",
+            }
+        },
+        require_url=True,
+    )
+
+    assert settings == DeephavenMCPSettings(
+        url="https://mcp.example.com",
+        token="secret-token",
+        use_tls=False,
+        subscription_dir="/tmp/subscriptions",
+    )
+
+
+def test_load_deephaven_mcp_settings_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEEPAGENTS_DEEPHAVEN_MCP_URL", "https://env-mcp")
+    monkeypatch.setenv("DEEPAGENTS_DEEPHAVEN_MCP_TOKEN", "env-token")
+    monkeypatch.setenv("DEEPAGENTS_DEEPHAVEN_MCP_USE_TLS", "0")
+    monkeypatch.setenv("DEEPAGENTS_DEEPHAVEN_MCP_SUBSCRIPTION_DIR", "/var/mcp")
+
+    settings = load_deephaven_mcp_settings(env=os.environ, require_url=True)
+
+    assert settings.url == "https://env-mcp"
+    assert settings.token == "env-token"
+    assert settings.use_tls is False
+    assert settings.subscription_dir == "/var/mcp"
+
+
+def test_load_deephaven_mcp_settings_requires_token() -> None:
+    with pytest.raises(ValueError, match="token must be provided"):
+        load_deephaven_mcp_settings(
+            {
+                "deephaven_mcp": {
+                    "url": "https://missing-token",
+                }
+            },
+            require_url=True,
+        )
 
 
 @pytest.mark.parametrize(
