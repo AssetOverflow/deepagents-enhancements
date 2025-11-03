@@ -13,7 +13,7 @@ from typing import Any, Callable, Mapping as MappingType, Protocol
 
 try:
     from pydeephaven import dtypes as dh_dtypes
-except Exception:  # pragma: no cover - fallback for optional dependency
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - fallback for optional dependency
     dh_dtypes = None
 
 
