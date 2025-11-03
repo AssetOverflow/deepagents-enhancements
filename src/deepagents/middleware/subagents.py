@@ -1,6 +1,6 @@
 """Middleware for providing subagents to an agent via a `task` tool."""
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any, TypedDict, cast
 from typing_extensions import NotRequired
 
@@ -13,6 +13,8 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.runnables import Runnable
 from langchain_core.tools import StructuredTool
 from langgraph.types import Command
+
+from deepagents.tools import ToolProvider, ensure_tool_provider
 
 
 class SubAgent(TypedDict):
@@ -281,7 +283,7 @@ def _get_subagents(
 def _create_task_tool(
     *,
     default_model: str | BaseChatModel,
-    default_tools: Sequence[BaseTool | Callable | dict[str, Any]],
+    default_tool_provider: ToolProvider,
     default_middleware: list[AgentMiddleware] | None,
     default_interrupt_on: dict[str, bool | InterruptOnConfig] | None,
     subagents: list[SubAgent | CompiledSubAgent],
@@ -304,14 +306,18 @@ def _create_task_tool(
     Returns:
         A StructuredTool that can invoke subagents by type.
     """
-    subagent_graphs, subagent_descriptions = _get_subagents(
-        default_model=default_model,
-        default_tools=default_tools,
-        default_middleware=default_middleware,
-        default_interrupt_on=default_interrupt_on,
-        subagents=subagents,
-        general_purpose_agent=general_purpose_agent,
-    )
+    def _build_subagents() -> tuple[dict[str, Any], list[str]]:
+        tools = list(default_tool_provider.get_tools())
+        return _get_subagents(
+            default_model=default_model,
+            default_tools=tools,
+            default_middleware=default_middleware,
+            default_interrupt_on=default_interrupt_on,
+            subagents=subagents,
+            general_purpose_agent=general_purpose_agent,
+        )
+
+    subagent_graphs, subagent_descriptions = _build_subagents()
     subagent_description_str = "\n".join(subagent_descriptions)
 
     def _return_command_with_state_update(result: dict, tool_call_id: str) -> Command:
@@ -323,7 +329,12 @@ def _create_task_tool(
             }
         )
 
-    def _validate_and_prepare_state(subagent_type: str, description: str, runtime: ToolRuntime) -> tuple[Runnable, dict]:
+    def _validate_and_prepare_state(
+        subagent_graphs: Mapping[str, Runnable],
+        subagent_type: str,
+        description: str,
+        runtime: ToolRuntime,
+    ) -> tuple[Runnable, dict]:
         """Validate subagent type and prepare state for invocation."""
         if subagent_type not in subagent_graphs:
             msg = f"Error: invoked agent of type {subagent_type}, the only allowed types are {[f'`{k}`' for k in subagent_graphs]}"
@@ -346,7 +357,8 @@ def _create_task_tool(
         subagent_type: str,
         runtime: ToolRuntime,
     ) -> str | Command:
-        subagent, subagent_state = _validate_and_prepare_state(subagent_type, description, runtime)
+        subagent_graphs, _ = _build_subagents()
+        subagent, subagent_state = _validate_and_prepare_state(subagent_graphs, subagent_type, description, runtime)
         result = subagent.invoke(subagent_state)
         if not runtime.tool_call_id:
             value_error_msg = "Tool call ID is required for subagent invocation"
@@ -358,7 +370,8 @@ def _create_task_tool(
         subagent_type: str,
         runtime: ToolRuntime,
     ) -> str | Command:
-        subagent, subagent_state = _validate_and_prepare_state(subagent_type, description, runtime)
+        subagent_graphs, _ = _build_subagents()
+        subagent, subagent_state = _validate_and_prepare_state(subagent_graphs, subagent_type, description, runtime)
         result = await subagent.ainvoke(subagent_state)
         if not runtime.tool_call_id:
             value_error_msg = "Tool call ID is required for subagent invocation"
@@ -393,6 +406,8 @@ class SubAgentMiddleware(AgentMiddleware):
         default_model: The model to use for subagents.
             Can be a LanguageModelLike or a dict for init_chat_model.
         default_tools: The tools to use for the default general-purpose subagent.
+            May be provided as a sequence or any object implementing
+            :class:`~deepagents.tools.ToolProvider` to enable dynamic catalogs.
         default_middleware: Default middleware to apply to all subagents. If `None` (default),
             no default middleware is applied. Pass a list to specify custom middleware.
         default_interrupt_on: The tool configs to use for the default general-purpose subagent. These
@@ -438,7 +453,7 @@ class SubAgentMiddleware(AgentMiddleware):
         self,
         *,
         default_model: str | BaseChatModel,
-        default_tools: Sequence[BaseTool | Callable | dict[str, Any]] | None = None,
+        default_tools: ToolProvider | Sequence[BaseTool | Callable | dict[str, Any]] | None = None,
         default_middleware: list[AgentMiddleware] | None = None,
         default_interrupt_on: dict[str, bool | InterruptOnConfig] | None = None,
         subagents: list[SubAgent | CompiledSubAgent] | None = None,
@@ -449,9 +464,10 @@ class SubAgentMiddleware(AgentMiddleware):
         """Initialize the SubAgentMiddleware."""
         super().__init__()
         self.system_prompt = system_prompt
+        tool_provider = ensure_tool_provider(default_tools)
         task_tool = _create_task_tool(
             default_model=default_model,
-            default_tools=default_tools or [],
+            default_tool_provider=tool_provider,
             default_middleware=default_middleware,
             default_interrupt_on=default_interrupt_on,
             subagents=subagents or [],
@@ -459,6 +475,7 @@ class SubAgentMiddleware(AgentMiddleware):
             task_description=task_description,
         )
         self.tools = [task_tool]
+        self.tool_provider = tool_provider
 
     def wrap_model_call(
         self,
