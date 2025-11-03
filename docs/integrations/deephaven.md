@@ -1,84 +1,119 @@
-# Deephaven Integration Configuration
+# Deephaven Transport Integration Guide
 
-DeepAgents can connect to a Deephaven server to stream agent telemetry and
-messages. The integration is optional and controlled through the
-`deepagents.config` helpers introduced for this release.
+This guide walks through installing, configuring, and operating the Deephaven-backed transport
+(`DeephavenBus`) for Deepagents. Pair it with the architectural roadmap in
+[Deephaven Neural Bus Integration Plan](../research/deephaven_neural_bus_plan.md) when you are
+rolling the capability into production.
 
-## Python Configuration Helpers
+## Prerequisites
+- **Deephaven Server** running with Barrage streaming enabled. A single-node deployment works for
+  local testing; production clusters should follow the [Deephaven deployment docs](https://deephaven.io/core/docs/)
+  with dedicated Update Graphs for control-plane and high-volume traffic.
+- **Python 3.10+** environment for Deepagents.
+- **Network access** from Deepagents runtimes to the Deephaven server over gRPC/Arrow Flight.
+- Optional: **Kafka cluster** if you plan to mirror message tables for durability.
 
-Use the dataclasses in `deepagents.config` to build strongly-typed settings:
+## Installation
 
-```python
-from deepagents.config import (
-    DeephavenAuthSettings,
-    DeephavenSettings,
-    DeephavenTableSettings,
-)
+### 1. Install Deephaven dependencies
+Add the Deephaven extra when installing Deepagents so that the runtime includes `pydeephaven` and
+companion packages.
 
-settings = DeephavenSettings(
-    uri="grpc://deephaven:10000",
-    auth=DeephavenAuthSettings(method="psk", api_key="change-me"),
-    tables=DeephavenTableSettings(
-        messages="agent_messages",
-        events="agent_events",
-        metrics="agent_metrics",
-    ),
-)
+```bash
+# uv
+uv add "deepagents[deephaven]"
+
+# pip
+pip install "deepagents[deephaven]"
+
+# poetry
+poetry add "deepagents[deephaven]"
 ```
 
-`load_deephaven_settings` reads dictionaries and environment variables, making
-it easy to hydrate configuration from LangGraph's `get_config()` metadata or
-12-factor style deployments. When no Deephaven connection details are present
-the helper returns `None`, allowing the integration to remain optional:
+If you manage dependencies manually, install the following packages directly:
 
-```python
-from deepagents.config import load_deephaven_settings
-
-settings = load_deephaven_settings({
-    "deephaven": {
-        "uri": "grpc://deephaven:10000",
-        "auth": {"method": "userpass", "username": "bot", "password": "secret"},
-    }
-})
+```bash
+pip install pydeephaven deephaven-core deephaven-py-client
 ```
 
-## Supported Settings
+### 2. Provision Deephaven resources
+1. Start the Deephaven server (Docker, Kubernetes, or bare-metal) with persistent storage
+   mounted at `/data`.
+2. Create a service user or API token for Deepagents and grant permissions on the tables
+   described below.
+3. Optionally enable TLS via the reverse proxy or ingress controller that fronts the server.
 
-| Setting | Environment Variable | Description | Default |
-| --- | --- | --- | --- |
-| `uri` | `DEEPAGENTS_DEEPHAVEN_URI` | Connection URI for Barrage/Flight. Required. | _none_ |
-| `update_graph` | `DEEPAGENTS_DEEPHAVEN_UPDATE_GRAPH` | Deephaven update graph used by the session. | `graph_default` |
-| `tables.messages` | `DEEPAGENTS_DEEPHAVEN_MESSAGES_TABLE` | Message queue table name. | `agent_messages` |
-| `tables.events` | `DEEPAGENTS_DEEPHAVEN_EVENTS_TABLE` | Audit/event log table. | `agent_events` |
-| `tables.metrics` | `DEEPAGENTS_DEEPHAVEN_METRICS_TABLE` | Metrics aggregate table. | `agent_metrics` |
-| `auth.method` | `DEEPAGENTS_DEEPHAVEN_AUTH_METHOD` | `none`, `psk`, `token`, or `userpass`. | `none` |
-| `auth.api_key` | `DEEPAGENTS_DEEPHAVEN_API_KEY` | Pre-shared key when `method="psk"`. | _none_ |
-| `auth.token` | `DEEPAGENTS_DEEPHAVEN_TOKEN` | Bearer token when `method="token"`. | _none_ |
-| `auth.username` | `DEEPAGENTS_DEEPHAVEN_USERNAME` | Username when `method="userpass"`. | _none_ |
-| `auth.password` | `DEEPAGENTS_DEEPHAVEN_PASSWORD` | Password when `method="userpass"`. | _none_ |
+### 3. Bootstrap transport tables
+Run the bootstrap script once per environment to create the canonical tables used by the bus.
+The script can be invoked via a CLI entry point or by running the example directly:
 
-## Validation Rules
+```bash
+uv run python -m examples.deephaven.producer --bootstrap-only
+```
 
-- The URI must be provided either by configuration or by environment
-  variable.
-- Authentication requirements are enforced based on the selected method.
-- Table names and the update graph must be non-empty strings.
+The bootstrapper creates:
+- `agent_messages`: ticking table used for message exchange and lease management.
+- `agent_events`: append-only audit stream.
+- `agent_metrics`: aggregated view refreshed via Deephaven queries.
 
-## Quickstart
+## Configuration
+The `DeephavenBus` reads configuration from environment variables or Deepagents' settings layer.
+The following table summarizes the required and optional settings:
 
-1. Install the optional client dependency:
-   ```bash
-   uv pip install pydeephaven
-   ```
-2. Export the minimum environment variables:
-   ```bash
-   export DEEPAGENTS_DEEPHAVEN_URI="grpc://localhost:10000"
-   export DEEPAGENTS_DEEPHAVEN_AUTH_METHOD="psk"
-   export DEEPAGENTS_DEEPHAVEN_API_KEY="change-me"
-   ```
-3. Call `load_deephaven_settings()` during agent bootstrap to obtain a
-   validated `DeephavenSettings` instance. If the function returns `None`,
-   skip Deephaven initialization.
+| Variable | Description | Default |
+| --- | --- | --- |
+| `DEEPHAVEN_HOST` | Deephaven server host or load balancer DNS name. | `localhost` |
+| `DEEPHAVEN_PORT` | Barrage/Flight port (usually `10000`). | `10000` |
+| `DEEPHAVEN_USE_TLS` | Set to `1` to enable TLS connections. | `0` |
+| `DEEPHAVEN_API_TOKEN` | API token or password for authentication. | _required_ |
+| `DEEPHAVEN_SESSION_POOL_SIZE` | Size of the `pydeephaven` session pool. | `4` |
+| `DEEPHAVEN_AGENT_MESSAGES_TABLE` | Name of the primary message table. | `agent_messages` |
+| `DEEPHAVEN_AGENT_EVENTS_TABLE` | Audit table name. | `agent_events` |
+| `DEEPHAVEN_AGENT_METRICS_TABLE` | Aggregated metrics table name. | `agent_metrics` |
+| `DEEPHAVEN_KAFKA_MIRROR_TOPIC` | Kafka topic for mirroring bus traffic. | _unset_ |
+| `DEEPHAVEN_HEARTBEAT_S` | Interval for session heartbeat checks. | `30` |
 
-For production deployments, ensure the Deephaven server has the referenced
-update graph and table names provisioned before starting DeepAgents instances.
+Surface these variables through Deepagents' configuration management (e.g., `.env`, Kubernetes
+Secrets, or HashiCorp Vault). For multi-tenant deployments, supply per-tenant prefixes and update
+the bootstrap script to create isolated table namespaces.
+
+## Operational Guidance
+
+### Health checks
+- Run the [health check example](../../examples/deephaven/consumer.py) with `--health-check` to
+  verify connectivity, table presence, and streaming updates.
+- Monitor Barrage connection health via the Deephaven console (`/ide`) or through exported metrics
+  if you have integrated Prometheus.
+
+### Runtime operations
+1. **Producer agents** call `DeephavenBus.publish()` (see
+   [examples/deephaven/producer.py](../../examples/deephaven/producer.py)) to enqueue messages
+   into `agent_messages`. Ensure each payload includes a unique `task_id` and `session_id` so that
+   consumers can filter precisely.
+2. **Consumer agents** maintain subscriptions using filtered views and lease columns. The consumer
+   example demonstrates how to claim, extend, and ack leases with atomic updates.
+3. **Metrics ingestion** runs as a background task that reads from `agent_events`, computes rolling
+   metrics, and publishes them to `agent_metrics` or your observability pipeline.
+
+### Scaling & resilience
+- Scale Deephaven vertically (more CPU/RAM) to improve tick processing latency; horizontally scale
+  Deepagents workers to increase throughput.
+- Use the session pool to amortize authentication cost. Configure `DEEPHAVEN_SESSION_POOL_SIZE`
+  based on the expected concurrency per process.
+- Mirror `agent_messages` and `agent_events` to Kafka using Deephaven connectors to guarantee
+  durability. Document replay procedures as part of your operational runbook.
+
+### Troubleshooting
+- **Stale leases**: Inspect the `lease_expires_ts` column and use the consumer example's
+  `--force-release` flag to reset stuck rows.
+- **Auth failures**: Rotate the API token and ensure the updated secret propagates to all agents.
+- **Schema drift**: Re-run the bootstrap command and compare table definitions against the
+  canonical schema in the research plan.
+
+## Next steps
+- Implement the production `DeephavenBus` adapter within `src/deepagents/transports/deephaven/`.
+- Wire the configuration surface into Deepagents settings and CLI.
+- Extend your observability stack with dashboards for queue depth, lease churn, and error rates.
+
+Once these steps are complete, Deepagents can treat Deephaven as a first-class transport for planning,
+collaboration, and telemetry workloads.

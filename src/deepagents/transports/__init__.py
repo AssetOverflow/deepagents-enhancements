@@ -68,6 +68,7 @@ __all__ = [
     "DeephavenTables",
     "DeephavenTransport",
     "InMemoryTransport",
+    "MCPTransport",
     "get_transport",
     "register_transport",
 ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 import os
 from typing import Any, Mapping, MutableMapping
 
@@ -84,6 +85,23 @@ class DeephavenTableSettings:
 
 
 @dataclass(slots=True)
+class DeephavenMCPTelemetrySettings:
+    """Configuration controlling MCP stream telemetry fan-out."""
+
+    enabled: bool = False
+    inbound_buffer_size: int = 25
+    outbound_buffer_size: int = 25
+    stream_topics: MutableMapping[str, str] = field(default_factory=dict)
+    stream_tables: MutableMapping[str, str] = field(default_factory=dict)
+
+    def validate(self) -> None:
+        if self.inbound_buffer_size <= 0:
+            raise ValueError("inbound_buffer_size must be positive")
+        if self.outbound_buffer_size <= 0:
+            raise ValueError("outbound_buffer_size must be positive")
+
+
+@dataclass(slots=True)
 class DeephavenSettings:
     """Aggregate Deephaven runtime configuration."""
 
@@ -91,6 +109,7 @@ class DeephavenSettings:
     auth: DeephavenAuthSettings = field(default_factory=DeephavenAuthSettings)
     update_graph: str = DEFAULT_UPDATE_GRAPH
     tables: DeephavenTableSettings = field(default_factory=DeephavenTableSettings)
+    mcp_telemetry: DeephavenMCPTelemetrySettings = field(default_factory=DeephavenMCPTelemetrySettings)
 
     def __post_init__(self) -> None:  # pragma: no cover - dataclass safety
         if not self.uri or not self.uri.strip():
@@ -99,6 +118,7 @@ class DeephavenSettings:
         self.tables.validate()
         if not self.update_graph or not self.update_graph.strip():
             raise ValueError("update_graph must be a non-empty string")
+        self.mcp_telemetry.validate()
 
 
 def load_deephaven_settings(
@@ -181,7 +201,44 @@ def load_deephaven_settings(
         ),
     )
 
-    return DeephavenSettings(uri=uri, auth=auth, update_graph=update_graph, tables=tables)
+    mcp_section = _coerce_mapping(deephaven_section.get("mcp_telemetry"), section="mcp_telemetry")
+    env_mcp_prefix = f"{_ENV_PREFIX}MCP_TELEMETRY_"
+    stream_topics = _coerce_mapping(
+            mcp_section.get("stream_topics"),
+            section="stream_topics",
+        ) or _parse_mapping_string(env.get(f"{env_mcp_prefix}STREAM_TOPICS"), section="stream_topics")
+
+
+    stream_tables = _coerce_mapping(
+            mcp_section.get("stream_tables"),
+            section="stream_tables",
+        ) or _parse_mapping_string(env.get(f"{env_mcp_prefix}STREAM_TABLES"), section="stream_tables")
+
+
+    env_enabled_raw = env.get(f"{env_mcp_prefix}ENABLED")
+    env_enabled = _coerce_bool(env_enabled_raw, default=False) if env_enabled_raw is not None else False
+    inbound_buffer_value = mcp_section.get("inbound_buffer_size")
+    if inbound_buffer_value is None:
+        inbound_buffer_value = env.get(f"{env_mcp_prefix}INBOUND_BUFFER_SIZE")
+    outbound_buffer_value = mcp_section.get("outbound_buffer_size")
+    if outbound_buffer_value is None:
+        outbound_buffer_value = env.get(f"{env_mcp_prefix}OUTBOUND_BUFFER_SIZE")
+
+    mcp_settings = DeephavenMCPTelemetrySettings(
+        enabled=_coerce_bool(mcp_section.get("enabled"), default=env_enabled),
+        inbound_buffer_size=int(inbound_buffer_value or 25),
+        outbound_buffer_size=int(outbound_buffer_value or 25),
+        stream_topics=stream_topics,
+        stream_tables=stream_tables,
+    )
+
+    return DeephavenSettings(
+        uri=uri,
+        auth=auth,
+        update_graph=update_graph,
+        tables=tables,
+        mcp_telemetry=mcp_settings,
+    )
 
 
 @dataclass(slots=True)
@@ -252,6 +309,7 @@ __all__ = [
     "DEFAULT_METRIC_TABLE",
     "DEFAULT_UPDATE_GRAPH",
     "DeephavenAuthSettings",
+    "DeephavenMCPTelemetrySettings",
     "DeephavenSettings",
     "DeephavenTableSettings",
     "DeephavenMCPSettings",

@@ -20,6 +20,7 @@ from langgraph.types import Checkpointer
 from deepagents.middleware.filesystem import FilesystemMiddleware
 from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
 from deepagents.middleware.subagents import CompiledSubAgent, SubAgent, SubAgentMiddleware
+from deepagents.tools import ToolProvider, ensure_tool_provider
 from deepagents.redis import RedisCache, RedisSettings, RedisStore, create_redis_client
 
 BASE_AGENT_PROMPT = "In order to complete the objective that the user asks of you, you have access to a number of standard tools."
@@ -39,7 +40,7 @@ def get_default_model() -> ChatAnthropic:
 
 def create_deep_agent(
     model: str | BaseChatModel | None = None,
-    tools: Sequence[BaseTool | Callable | dict[str, Any]] | None = None,
+    tools: ToolProvider | Sequence[BaseTool | Callable | dict[str, Any]] | None = None,
     *,
     system_prompt: str | None = None,
     middleware: Sequence[AgentMiddleware] = (),
@@ -112,6 +113,9 @@ def create_deep_agent(
     if model is None:
         model = get_default_model()
 
+    tool_provider = ensure_tool_provider(tools)
+    resolved_tools = list(tool_provider.get_tools())
+
     redis_client = None
     redis_prefix = "deepagents"
     if redis_settings is not None:
@@ -144,7 +148,7 @@ def create_deep_agent(
         ),
         SubAgentMiddleware(
             default_model=model,
-            default_tools=tools,
+            default_tools=tool_provider,
             subagents=subagents if subagents is not None else [],
             default_middleware=[
                 TodoListMiddleware(),
@@ -178,7 +182,7 @@ def create_deep_agent(
     return create_agent(
         model,
         system_prompt=system_prompt + "\n\n" + BASE_AGENT_PROMPT if system_prompt else BASE_AGENT_PROMPT,
-        tools=tools,
+        tools=resolved_tools,
         middleware=deepagent_middleware,
         response_format=response_format,
         context_schema=context_schema,

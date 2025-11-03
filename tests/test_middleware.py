@@ -9,6 +9,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langgraph.graph.message import add_messages
+from langgraph.types import Command
 
 from deepagents.middleware.filesystem import (
     FILESYSTEM_SYSTEM_PROMPT,
@@ -19,6 +20,7 @@ from deepagents.middleware.filesystem import (
 )
 from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
 from deepagents.middleware.subagents import DEFAULT_GENERAL_PURPOSE_DESCRIPTION, TASK_SYSTEM_PROMPT, TASK_TOOL_DESCRIPTION, SubAgentMiddleware
+from deepagents.tools import ToolProvider
 
 
 class TestAddMiddleware:
@@ -198,6 +200,82 @@ class TestPatchToolCallsMiddleware:
         assert state_update["messages"][2].type == "human"
         assert state_update["messages"][2].content == "Hello, how are you?"
         assert state_update["messages"][2].id == "2"
+
+
+class TrackingProvider(ToolProvider):
+    def __init__(self, tools):
+        self._tools = list(tools)
+        self.calls: list[list[str | None]] = []
+
+    def set_tools(self, tools):
+        self._tools = list(tools)
+
+    def get_tools(self):
+        names = [getattr(tool, "name", getattr(tool, "__name__", None)) for tool in self._tools]
+        self.calls.append(names)
+        return list(self._tools)
+
+
+def _make_structured_tool(name: str):
+    from langchain_core.tools import StructuredTool
+
+    def _func():
+        return name
+
+    return StructuredTool.from_function(name=name, func=_func, description=f"{name} tool")
+
+
+def test_subagent_middleware_uses_dynamic_tool_provider(monkeypatch):
+    alpha_tool = _make_structured_tool("alpha")
+    provider = TrackingProvider([alpha_tool])
+    created_agents: list[list[str | None]] = []
+
+    class FakeAgent:
+        def __init__(self, index: int):
+            self.index = index
+
+        def invoke(self, state):
+            return {"messages": [AIMessage(content=f"done-{self.index}")], "result": f"done-{self.index}"}
+
+        async def ainvoke(self, state):
+            return self.invoke(state)
+
+    def fake_create_agent(*args, tools=None, **kwargs):
+        names = [getattr(tool, "name", getattr(tool, "__name__", None)) for tool in (tools or [])]
+        created_agents.append(names)
+        return FakeAgent(len(created_agents))
+
+    monkeypatch.setattr("deepagents.middleware.subagents.create_agent", fake_create_agent)
+
+    middleware = SubAgentMiddleware(default_model="gpt-4o-mini", default_tools=provider)
+    assert provider.calls[0] == ["alpha"]
+    assert created_agents[0] == ["alpha"]
+
+    beta_tool = _make_structured_tool("beta")
+    provider.set_tools([alpha_tool, beta_tool])
+
+    task_tool = middleware.tools[0]
+    runtime = ToolRuntime(
+        state={"messages": [], "todos": []},
+        context=None,
+        tool_call_id="call-1",
+        store=None,
+        stream_writer=lambda _: None,
+        config={},
+    )
+
+    result = task_tool.invoke(
+        {
+            "description": "perform task",
+            "subagent_type": "general-purpose",
+            "runtime": runtime,
+        }
+    )
+
+    assert isinstance(result, Command)
+    assert provider.calls[-1] == ["alpha", "beta"]
+    assert created_agents[-1] == ["alpha", "beta"]
+    assert result.update["messages"][0].content == "done-2"
 
     def test_missing_tool_call(self) -> None:
         input_messages = [

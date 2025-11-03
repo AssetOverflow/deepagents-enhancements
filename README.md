@@ -97,6 +97,18 @@ in the same way you would any LangGraph agent.
 
  Extend agents with persistent memory across threads using LangGraph’s Store. Agents can save and retrieve information from previous conversations.
 
+## Deephaven Transport (Preview)
+
+Deepagents now ships guidance for using Deephaven as a high-throughput transport powering TODO
+planning, task distribution, and telemetry streaming. The integration blueprint covers dependency
+installation, configuration surfaces, and operational runbooks.
+
+- Read the [Deephaven transport integration guide](docs/integrations/deephaven.md) for setup.
+- Explore the [producer](examples/deephaven/producer.py) and
+  [consumer](examples/deephaven/consumer.py) examples for reference patterns.
+- Align implementation details with the
+  [Deephaven neural bus research plan](docs/research/deephaven_neural_bus_plan.md).
+
 ## Customizing Deep Agents
 
 There are several parameters you can pass to `create_deep_agent` to create your own custom deep agent.
@@ -479,13 +491,15 @@ Prior versions of deepagents separated sync and async agent factories.
 **You should use `create_deep_agent` as the factory for both sync and async agents**
 
 
-## MCP
+## Deephaven MCP Integration
 
-The `deepagents` library can be ran with MCP tools. This can be achieved by using the [Langchain MCP Adapter library](https://github.com/langchain-ai/langchain-mcp-adapters).
+Deepagents now treats the Deephaven MCP server as a first-class transport for streaming telemetry, query execution, and materialization workflows. Read the [Deephaven MCP Operations Guide](docs/deephaven-mcp.md) for deployment, configuration, and troubleshooting details, and try the [specialist example](examples/deephaven_mcp/specialist_agent.py) to see the integration in action.
 
-**NOTE:** You will want to use `from deepagents import async_create_deep_agent` to use the async version of `deepagents`, since MCP tools are async
+The `deepagents` library can be run with MCP tools by using the [Langchain MCP Adapter library](https://github.com/langchain-ai/langchain-mcp-adapters).
 
-(To run the example below, will need to `pip install langchain-mcp-adapters`)
+**NOTE:** Use `from deepagents import create_deep_agent` to construct async-capable agents; the factory automatically returns an async graph when any async tools (like MCP) are supplied.
+
+(To run the example below, you will need to `pip install langchain-mcp-adapters`.)
 
 ```python
 import asyncio
