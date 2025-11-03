@@ -6,7 +6,9 @@ from collections.abc import Callable
 from typing import Any, Mapping
 
 from deepagents.transports.base import MessageTransport
+from deepagents.config import load_deephaven_mcp_settings
 from deepagents.transports.deephaven import DeephavenTables, DeephavenTransport
+from deepagents.transports.deephaven_mcp import DeephavenMCPTransport
 from deepagents.transports.memory import InMemoryTransport
 
 TransportFactory = Callable[[Mapping[str, Any]], MessageTransport]
@@ -49,10 +51,20 @@ def _create_deephaven_transport(config: Mapping[str, Any]) -> MessageTransport:
     return DeephavenTransport(session=session, tables=tables)
 
 
+def _create_deephaven_mcp_transport(config: Mapping[str, Any]) -> MessageTransport:
+    settings = load_deephaven_mcp_settings(config, require_url=True)
+    if settings is None:  # pragma: no cover - defensive, require_url enforces URL
+        msg = "Deephaven MCP settings could not be loaded"
+        raise ValueError(msg)
+    return DeephavenMCPTransport(settings=settings)
+
+
 register_transport("memory", _create_memory_transport)
 register_transport("deephaven", _create_deephaven_transport)
+register_transport("deephaven_mcp", _create_deephaven_mcp_transport)
 
 __all__ = [
+    "DeephavenMCPTransport",
     "DeephavenTables",
     "DeephavenTransport",
     "InMemoryTransport",
