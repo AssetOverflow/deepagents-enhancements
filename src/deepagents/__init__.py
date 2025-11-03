@@ -15,13 +15,25 @@ from deepagents.middleware.filesystem import FilesystemMiddleware
 from deepagents.middleware.subagents import CompiledSubAgent, SubAgent, SubAgentMiddleware
 from deepagents.session import AgentSession, AgentSessionConfig, create_agent_session
 
-try:  # pragma: no cover - optional Deephaven telemetry dependency
-    from deepagents.telemetry import ColumnSpec, DeephavenTelemetryEmitter, DEFAULT_EVENT_SCHEMA, DEFAULT_METRIC_SCHEMA
-except ImportError:  # pragma: no cover - gracefully degrade when pydeephaven is unavailable
-    ColumnSpec = None  # type: ignore[assignment]
-    DeephavenTelemetryEmitter = None  # type: ignore[assignment]
-    DEFAULT_EVENT_SCHEMA = None  # type: ignore[assignment]
-    DEFAULT_METRIC_SCHEMA = None  # type: ignore[assignment]
+ColumnSpec = None
+DeephavenTelemetryEmitter = None
+DEFAULT_EVENT_SCHEMA: tuple = ()
+DEFAULT_METRIC_SCHEMA: tuple = ()
+
+try:  # pragma: no cover - optional telemetry dependency
+    from deepagents.telemetry import (
+        ColumnSpec as _ColumnSpec,
+        DeephavenTelemetryEmitter as _DeephavenTelemetryEmitter,
+        DEFAULT_EVENT_SCHEMA as _DEFAULT_EVENT_SCHEMA,
+        DEFAULT_METRIC_SCHEMA as _DEFAULT_METRIC_SCHEMA,
+    )
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - telemetry extras unavailable
+    pass
+else:
+    ColumnSpec = _ColumnSpec
+    DeephavenTelemetryEmitter = _DeephavenTelemetryEmitter
+    DEFAULT_EVENT_SCHEMA = _DEFAULT_EVENT_SCHEMA
+    DEFAULT_METRIC_SCHEMA = _DEFAULT_METRIC_SCHEMA
 
 __all__ = [
     "AgentSession",
@@ -34,7 +46,7 @@ __all__ = [
     "create_deep_agent",
 ]
 
-if DeephavenTelemetryEmitter is not None:  # pragma: no cover - optional export
+if ColumnSpec or DeephavenTelemetryEmitter is not None:  # pragma: no cover - optional export
     __all__.extend(
         [
             "ColumnSpec",
