@@ -111,6 +111,42 @@ Treat tables as topics and materialized views as subscriptions. Provision the fo
 4. **Adaptive Planning Hooks**
    - Integrate Deephaven alerts (e.g., queue depth > threshold) with Deepagents TODO middleware to inject remediation tasks automatically.
 
+## Installation & Configuration Checklist
+Follow this operational checklist when enabling the transport in a new environment. Each step
+has a corresponding deep dive in [docs/integrations/deephaven.md](../integrations/deephaven.md).
+
+1. **Install runtime dependencies**
+   - Add the `deephaven` extra to the Deepagents installation (`uv add "deepagents[deephaven]"`).
+   - Pin `pydeephaven`, `deephaven-core`, and security libraries compatible with your server build.
+2. **Provision infrastructure**
+   - Deploy Deephaven with Barrage enabled and persistent storage for `/data` and exported snapshots.
+   - Create a service account or API token dedicated to Deepagents and store it in your secrets
+     manager (Vault, AWS Secrets Manager, etc.).
+3. **Bootstrap canonical tables**
+   - Run the bootstrap command (`uv run python -m examples.deephaven.producer --bootstrap-only`)
+     to create `agent_messages`, `agent_events`, and `agent_metrics`.
+   - Verify schemas via the Deephaven console (`/ide`) before letting agents connect.
+4. **Wire configuration**
+   - Set required environment variables (`DEEPHAVEN_HOST`, `DEEPHAVEN_PORT`, `DEEPHAVEN_API_TOKEN`).
+   - Tune optional knobs like `DEEPHAVEN_SESSION_POOL_SIZE` and Kafka mirror topics per workload.
+5. **Smoke test connectivity**
+   - Execute the consumer health check (`uv run python -m examples.deephaven.consumer --health-check`).
+   - Confirm producers can publish messages and consumers receive tick updates with valid leases.
+
+## Operational Guidance
+Embed the following practices into on-call runbooks and SRE procedures.
+
+- **Lease hygiene**: Automate detection of expired leases using Deephaven queries; expose a
+  remediation command (`--force-release`) to clear them without downtime.
+- **Backpressure alerts**: Monitor queue depth (`agent_messages` grouped by `topic`) and trigger
+  Deepagents TODO injections when thresholds are breached.
+- **Metrics exports**: Stream `agent_metrics` to your observability stack (Prometheus, Grafana) and
+  persist daily snapshots for retrospectives.
+- **Disaster recovery**: Mirror bus tables to Kafka and document replay scripts that rehydrate
+  `agent_messages` into Deephaven after outages.
+- **Security audits**: Rotate API tokens quarterly and validate TLS certificates via automated
+  health checks.
+
 ## Deliverables & Documentation
 - **Architecture Specification** (this document) stored in `docs/research` and linked from `docs/_sidebar.md`.
 - **Configuration Guide** covering auth setup, environment variables, and bootstrap commands.

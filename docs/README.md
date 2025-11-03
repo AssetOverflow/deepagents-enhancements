@@ -6,6 +6,7 @@ upgrade plans, and subsystem deep dives that guide platform development.
 ## Quick Links
 - **Research**: Strategic investigations into new capabilities like Deephaven MCP integration and
   future upgrade paths.
+- **Integrations**: Step-by-step runbooks for enabling transports such as the Deephaven bus.
 - **Memory Architecture**: Current implementation details and optimization studies for agent memory systems.
 - **Redis Upgrades**: Roadmaps for evolving the Redis-backed collaboration substrate that powers task, TODO,
   and roster coordination.

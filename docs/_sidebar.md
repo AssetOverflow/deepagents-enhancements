@@ -3,6 +3,8 @@
   - [Deephaven + Deepagents Overview](research/deephaven_deepagents.md)
   - [Deephaven MCP Integration Blueprint](research/deephaven_mcp_integration.md)
   - [Deephaven Neural Bus Integration Plan](research/deephaven_neural_bus_plan.md)
+- Integrations
+  - [Deephaven Transport Integration Guide](integrations/deephaven.md)
 - Memory Architecture
   - [Memory Documentation Hub](memory/README.md)
   - [Short-Term Memory](memory/short_term_memory.md)
@@ -16,3 +18,4 @@
   
 - Integrations
   - [Deephaven Configuration](integrations/deephaven.md)
+  - [Deephaven MCP Operations Guide](deephaven-mcp.md)
