@@ -27,7 +27,7 @@ try:  # pragma: no cover - optional telemetry dependency
         DEFAULT_EVENT_SCHEMA as _DEFAULT_EVENT_SCHEMA,
         DEFAULT_METRIC_SCHEMA as _DEFAULT_METRIC_SCHEMA,
     )
-except Exception:  # pragma: no cover - telemetry extras unavailable
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - telemetry extras unavailable
     pass
 else:
     ColumnSpec = _ColumnSpec
