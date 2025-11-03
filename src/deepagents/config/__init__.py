@@ -212,11 +212,10 @@ def load_deephaven_settings(
     mcp_section = _coerce_mapping(deephaven_section.get("mcp_telemetry"), section="mcp_telemetry")
     env_mcp_prefix = f"{_ENV_PREFIX}MCP_TELEMETRY_"
     stream_topics = _coerce_mapping(
-        mcp_section.get("stream_topics"),
-        section="stream_topics",
-    )
-    if not stream_topics:
-        stream_topics = _parse_mapping_string(env.get(f"{env_mcp_prefix}STREAM_TOPICS"), section="stream_topics")
+            mcp_section.get("stream_topics"),
+            section="stream_topics",
+        ) or _parse_mapping_string(env.get(f"{env_mcp_prefix}STREAM_TOPICS"), section="stream_topics")
+
 
     stream_tables = _coerce_mapping(
         mcp_section.get("stream_tables"),
